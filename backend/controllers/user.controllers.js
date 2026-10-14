@@ -42,18 +42,35 @@ export const askToAssistant=async (req,res)=>{
    try {
       const {command}=req.body
       const user=await User.findById(req.userId);
-      user.history.push(command)
-      user.save()
-      const userName=user.name
-      const assistantName=user.assistantName
+      if (user) {
+         user.history.push(command)
+         await user.save()
+      }
+      const userName=user?.name || "User"
+      const assistantName=user?.assistantName || "Assistant"
       const result=await geminiResponse(command,assistantName,userName)
 
-      const jsonMatch=result.match(/{[\s\S]*}/)
-      if(!jsonMatch){
-         return res.ststus(400).json({response:"sorry, i can't understand"})
+      let gemResult = null;
+      if (result) {
+         try {
+            const jsonMatch=result.match(/{[\s\S]*}/)
+            if (jsonMatch) {
+               gemResult=JSON.parse(jsonMatch[0])
+            }
+         } catch (e) {
+            console.error("Failed to parse assistant response:", e);
+         }
       }
-      const gemResult=JSON.parse(jsonMatch[0])
-      console.log(gemResult)
+
+      if (!gemResult) {
+         return res.status(200).json({
+            type: "general",
+            userInput: command,
+            response: "Sorry, I had trouble processing that. Could you please repeat?"
+         })
+      }
+
+      console.log("Assistant interpreted:", gemResult)
       const type=gemResult.type
 
       switch(type){
@@ -61,46 +78,54 @@ export const askToAssistant=async (req,res)=>{
             return res.json({
                type,
                userInput:gemResult.userInput,
-               response:`current date is ${moment().format("YYYY-MM-DD")}`
+               response:`Current date is ${moment().format("YYYY-MM-DD")}`
             });
-            case 'get-time':
-                return res.json({
+         case 'get-time':
+            return res.json({
                type,
                userInput:gemResult.userInput,
-               response:`current time is ${moment().format("hh:mm A")}`
+               response:`Current time is ${moment().format("hh:mm A")}`
             });
-             case 'get-day':
-                return res.json({
+         case 'get-day':
+            return res.json({
                type,
                userInput:gemResult.userInput,
-               response:`today is ${moment().format("dddd")}`
+               response:`Today is ${moment().format("dddd")}`
             });
-            case 'get-month':
-                return res.json({
+         case 'get-month':
+            return res.json({
                type,
                userInput:gemResult.userInput,
-               response:`today is ${moment().format("MMMM")}`
+               response:`Current month is ${moment().format("MMMM")}`
             });
-      case 'google-search':
-      case 'youtube-search':
-      case 'youtube-play':
-      case 'general':
-      case  "calculator-open":
-      case "instagram-open": 
-       case "facebook-open": 
-       case "weather-show" :
-         return res.json({
-            type,
-            userInput:gemResult.userInput,
-            response:gemResult.response,
-         });
+         case 'google-search':
+         case 'youtube-search':
+         case 'youtube-play':
+         case 'general':
+         case "calculator-open":
+         case "instagram-open": 
+         case "facebook-open": 
+         case "weather-show":
+            return res.json({
+               type,
+               userInput:gemResult.userInput,
+               response:gemResult.response,
+            });
 
          default:
-            return res.status(400).json({ response: "I didn't understand that command." })
+            return res.json({
+               type: "general",
+               userInput: command,
+               response: gemResult.response || "I didn't understand that command."
+            })
       }
-     
 
    } catch (error) {
-  return res.status(500).json({ response: "ask assistant error" })
+      console.error("askToAssistant controller error:", error);
+      return res.status(200).json({
+         type: "general",
+         userInput: req.body?.command || "",
+         response: "Sorry, I encountered an internal error. Please try again."
+      })
    }
 }

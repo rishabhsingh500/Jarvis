@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from 'react'
-import { userDataContext } from '../context/userContext'
+import { userDataContext } from '../context/UserContext'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import aiImg from "../assets/ai.gif"
@@ -45,54 +45,64 @@ function Home() {
   }
 
   const speak=(text)=>{
-    const utterence=new SpeechSynthesisUtterance(text)
-    utterence.lang = 'hi-IN';
-    const voices =window.speechSynthesis.getVoices()
-    const hindiVoice = voices.find(v => v.lang === 'hi-IN');
-    if (hindiVoice) {
-      utterence.voice = hindiVoice;
+    if (!text) return;
+    const utterence=new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const voice = voices.find(v => v.lang === 'hi-IN') || voices.find(v => v.lang.startsWith('en'));
+    if (voice) {
+      utterence.voice = voice;
+    } else {
+      utterence.lang = 'en-US';
     }
 
-
-    isSpeakingRef.current=true
+    isSpeakingRef.current=true;
     utterence.onend=()=>{
-        setAiText("");
-  isSpeakingRef.current = false;
-  setTimeout(() => {
-    startRecognition(); // ⏳ Delay se race condition avoid hoti hai
-  }, 800);
-    }
-   synth.cancel(); // 🛑 pehle se koi speech ho to band karo
-synth.speak(utterence);
+      setAiText("");
+      isSpeakingRef.current = false;
+      setTimeout(() => {
+        startRecognition(); // ⏳ Delay se race condition avoid hoti hai
+      }, 800);
+    };
+    utterence.onerror=(err)=>{
+      console.warn("SpeechSynthesis error:", err);
+      setAiText("");
+      isSpeakingRef.current = false;
+      setTimeout(() => {
+        startRecognition();
+      }, 800);
+    };
+
+    synth.cancel(); // 🛑 pehle se koi speech ho to band karo
+    synth.speak(utterence);
   }
 
   const handleCommand=(data)=>{
-    const {type,userInput,response}=data
+    if (!data) return;
+    const {type,userInput,response}=data;
+    if (response) {
       speak(response);
+    }
     
-    if (type === 'google-search') {
+    if (type === 'google-search' && userInput) {
       const query = encodeURIComponent(userInput);
       window.open(`https://www.google.com/search?q=${query}`, '_blank');
     }
-     if (type === 'calculator-open') {
-  
+    if (type === 'calculator-open') {
       window.open(`https://www.google.com/search?q=calculator`, '_blank');
     }
-     if (type === "instagram-open") {
+    if (type === "instagram-open") {
       window.open(`https://www.instagram.com/`, '_blank');
     }
     if (type ==="facebook-open") {
       window.open(`https://www.facebook.com/`, '_blank');
     }
-     if (type ==="weather-show") {
+    if (type ==="weather-show") {
       window.open(`https://www.google.com/search?q=weather`, '_blank');
     }
-
-    if (type === 'youtube-search' || type === 'youtube-play') {
+    if ((type === 'youtube-search' || type === 'youtube-play') && userInput) {
       const query = encodeURIComponent(userInput);
       window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
     }
-
   }
 
 useEffect(() => {
@@ -163,16 +173,28 @@ useEffect(() => {
 
   recognition.onresult = async (e) => {
     const transcript = e.results[e.results.length - 1][0].transcript.trim();
-    if (transcript.toLowerCase().includes(userData.assistantName.toLowerCase())) {
+    const assistantName = (userData?.assistantName || "jarvis").toLowerCase();
+    if (transcript.toLowerCase().includes(assistantName) || transcript.toLowerCase().includes("jarvis")) {
       setAiText("");
       setUserText(transcript);
       recognition.stop();
       isRecognizingRef.current = false;
       setListening(false);
-      const data = await getGeminiResponse(transcript);
-      handleCommand(data);
-      setAiText(data.response);
-      setUserText("");
+      try {
+        const data = await getGeminiResponse(transcript);
+        if (data && data.response) {
+          handleCommand(data);
+          setAiText(data.response);
+        } else {
+          speak("Sorry, I could not process that request.");
+          setAiText("Sorry, I could not process that request.");
+        }
+      } catch (err) {
+        console.error("Error handling speech result:", err);
+        speak("Something went wrong while processing your request.");
+      } finally {
+        setUserText("");
+      }
     }
   };
 
@@ -196,7 +218,7 @@ useEffect(() => {
 
 
   return (
-    <div className='w-full h-[100vh] bg-gradient-to-t from-[black] to-[#02023d] flex justify-center items-center flex-col gap-[15px]'>
+    <div className='w-full h-[100vh] bg-gradient-to-t from-[black] to-[#02023d] flex justify-center items-center flex-col gap-[15px] overflow-hidden'>
       <CgMenuRight className='lg:hidden text-white absolute top-[20px] right-[20px] w-[25px] h-[25px]' onClick={()=>setHam(true)}/>
       <div className={`absolute lg:hidden top-0 w-full h-full bg-[#00000053] backdrop-blur-lg p-[20px] flex flex-col gap-[20px] items-start ${ham?"translate-x-0":"translate-x-full"} transition-transform`}>
  <RxCross1 className=' text-white absolute top-[20px] right-[20px] w-[25px] h-[25px]' onClick={()=>setHam(false)}/>
